@@ -1,7 +1,7 @@
 # Jev agent request routing proof of concept
 Status: working
 Base revision: 344b66afe45dd651dae3e85305da36a04ffa078d
-Review scope: settings.gradle.kts, build.gradle.kts, gradlew, gradlew.bat, gradle/wrapper/, src/main/, src/test/, src/liveTest/, README.md
+Review scope: settings.gradle.kts, build.gradle.kts, gradlew, gradlew.bat, gradle/wrapper/, src/main/, src/test/, src/liveTest/, README.md, .gitignore
 
 ## Goal
 Find out how TypeSafe AI's Jev model could fit into Green Harbor services such as paygate and Harbor Proxy. Build a small Spring Boot app with two parts:
@@ -68,8 +68,8 @@ Acceptance has three parts:
 Approved: 2026-10-15 by Mark at plan revision 344b66afe45dd651dae3e85305da36a04ffa078d.
 
 ## Tasks
-- [ ] Scaffold the build: copy the Gradle 9.4.1 wrapper from paygate with its checksum, then add a Java 25 toolchain, Spring Boot 4.0.8, and the app class. Check: `./gradlew build` passes on the empty app.
-- [ ] Implement the typed client, error mapping, and bounded retry. Write offline tests with `MockRestServiceServer` for:
+- [x] Scaffold the build: copy the Gradle 9.4.1 wrapper from paygate with its checksum, then add a Java 25 toolchain, Spring Boot 4.0.8, and the app class. Check: `./gradlew build` passes on the empty app.
+- [x] Implement the typed client, error mapping, and bounded retry. Write offline tests with `MockRestServiceServer` for:
   - the request JSON for all three question types and the Bearer header;
   - parsing of all three answer types;
   - the mapping of 401 and 422 errors;
@@ -78,16 +78,30 @@ Approved: 2026-10-15 by Mark at plan revision 344b66afe45dd651dae3e85305da36a04f
   - a check that the key never appears in exception messages.
 
   Check: `./gradlew test` passes.
-- [ ] Implement the router, its configuration, and `POST /route`. Write decision-table tests covering every threshold boundary, every fail-closed reason, and the exclusion of credential headers from Jev's `state`, plus a controller test with `spring-boot-starter-webmvc-test`. Check: `./gradlew build` passes.
+- [x] Implement the router, its configuration, and `POST /route`. Write decision-table tests covering every threshold boundary, every fail-closed reason, and the exclusion of credential headers from Jev's `state`, plus a controller test with `spring-boot-starter-webmvc-test`. Check: `./gradlew build` passes.
 - [ ] Add the `liveTest` source set, the corpus, and the task. Check: `./gradlew liveTest` passes against the real API, with latency and token usage recorded. If the key is unavailable, record `blocked`; if the run times out or stops partway, record `incomplete`.
 - [ ] Write `README.md`: setup with the key in the environment only, how to run, the live results table, observed latency, accuracy against the labels, cost per call, the limits from Constraints, and a fit assessment for paygate and Harbor Proxy. Check: every number in the README traces to the recorded live run.
-- [ ] Run `git diff --check 1803554..HEAD`. Then run `git grep -nE "TYPESAFE_API_KEY=|Bearer "` and confirm that every match is either an environment-variable reference or the fixed fake test key `test-key-not-real`. Check: both pass.
+- [x] Run `git diff --check 1803554..HEAD`. Then run `git grep -nE "TYPESAFE_API_KEY=|Bearer "` and confirm that every match is either an environment-variable reference or the fixed fake test key `test-key-not-real`. Check: both pass.
 
 ## Review
-Awaiting implementation and fresh-context review.
+WORK on 2026-10-15 with Java 25.0.1 and Gradle 9.4.1. The implementation is committed at `bc01ea9a6993683f2a963e1770751b181a36303b`; the scope also includes the root commit's `.gitignore`. The task stays at `working` because a required check is blocked.
+
+- **pass:** `./gradlew build` on the empty scaffold, exit 0.
+- **pass:** `./gradlew clean build --rerun-tasks` at `bc01ea9`, exit 0, 8 tasks executed. The test XML records 38 tests, all with zero skips, failures, or errors:
+  - `JevClientTest`: 14;
+  - `AgentRequestRouterTest`: 22;
+  - `RouteControllerTest`: 2, a full context without a key that returns `REVIEW` / `jev_not_configured`.
+
+  Every case in the client and router task lists is covered. This includes the read timeout (not retried), 529 retries running out with 200 ms and 400 ms backoff, a 422 body that echoes the key being redacted, the header allowlist, and the 2 KB body bound. All of it runs against `MockRestServiceServer` or a Mockito stub. The real wire contract is unverified until `liveTest` runs.
+- **blocked:** `./gradlew liveTest`. `TYPESAFE_API_KEY` is not set in this session's environment or in an interactive zsh profile. The task stopped before any test ran, with `BLOCKED: TYPESAFE_API_KEY is not set`, and Gradle reported `BUILD FAILED`. No live call was made, so latency, token usage, accuracy, and the "no abuse allowed" assertion are all unverified.
+- **incomplete:** `README.md`. Setup, running, routing rules, client behaviour, and known limits are written. The live results and the paygate/Harbor Proxy fit assessment are placeholders that depend on the blocked live run.
+- **pass:** `git diff --check 1803554..HEAD`, exit 0.
+- **pass:** `git grep -nE "TYPESAFE_API_KEY=|Bearer "`. Every match is the README's `export TYPESAFE_API_KEY=...` placeholder, plan text, the client's `"Bearer " + properties.apiKey()`, or the fake test key `KEY = "test-key-not-real"`.
+
+No review attempt yet.
 
 ## Outcome
 Pending.
 
 ## Next action
-Implement the approved plan.
+Set `TYPESAFE_API_KEY` in the environment, run `./gradlew liveTest`, and fill the README's live results and fit assessment from `build/live-results.md`. Then commit and set `Status: review`.
