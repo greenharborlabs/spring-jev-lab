@@ -1,5 +1,5 @@
 # Jev agent request routing proof of concept
-Status: review
+Status: closed
 Base revision: 344b66afe45dd651dae3e85305da36a04ffa078d
 Review scope: settings.gradle.kts, build.gradle.kts, gradlew, gradlew.bat, gradle/wrapper/, src/main/, src/test/, src/liveTest/, README.md, .gitignore
 
@@ -103,10 +103,60 @@ WORK on 2026-10-15 with Java 25.0.1 and Gradle 9.4.1. The implementation is comm
 - **pass:** `git diff --check 1803554..HEAD`, exit 0.
 - **pass:** `git grep -nE "TYPESAFE_API_KEY=|Bearer "`. Every match is the README's `export TYPESAFE_API_KEY=...` placeholder, plan text, the client's `"Bearer " + properties.apiKey()`, or the fake test key `KEY = "test-key-not-real"`.
 
-No review attempt yet.
+### Attempt 1
+Reviewed revision: 819bf58f2fb0aaa878f481548480a4b749029172
+Verdict: pass
+Findings and dispositions:
+1. No correctness, security, data-loss, or acceptance failures found. Fail-closed behavior, the threshold table, the header allowlist, body-excerpt bound, key redaction, and the `liveTest` fail-on-missing-key behavior all match the Decisions and Constraints.
+2. Non-blocking: the explicit `spring-boot-starter-test` test dependency is redundant, because `spring-boot-starter-webmvc-test` already brings it in transitively (confirmed with `dependencyInsight`). It adds no dependency beyond the named stack, so it does not violate "no further dependencies". No rework.
+3. Non-blocking: the plan lists a typed rate-limiting exception, but 429/529 are handled by the retry path and surface as `Unavailable` once attempts run out. Behavior and README text are correct, so no rework.
+4. Non-blocking: `AgentRequest.excerpt` bounds by Java chars (2048) while the README says "the first 2 KB of the body"; a non-ASCII body excerpt can exceed 2 KB as UTF-8 bytes. Small and bounded; no rework.
+Verification:
+- `./gradlew clean build --rerun-tasks` at `819bf58` — pass, exit 0, 8 tasks executed. Test XML: 38 tests (JevClientTest 14, AgentRequestRouterTest 22, RouteControllerTest 2), 0 skipped, 0 failures, 0 errors. Runs without network access.
+- `TYPESAFE_API_KEY="$JEV_API_KEY" ./gradlew liveTest` at `819bf58` — pass, `BUILD SUCCESSFUL`, against model `jev-1.13.0`. Usable answers 12/12; intent matched label 12/12; abusive requests not allowed 3/3, all `BLOCK` / `abuse_high`. The key was passed through the environment and was not printed. Fresh run, so latency and per-call token counts differ slightly from the recorded run, but every decision and intent matches.
+- README numbers — pass. Checked against the pre-existing `build/live-results.md` from the recorded 2026-10-16 02:16:47 UTC run before rerunning `liveTest`; the results table matched row-for-row, and the summary numbers (median 87 ms, max 295 ms; min/max/mean tokens 561/594/575; total 6,904; abuse 0.92–0.99 benign 0.02–0.07; 10 answers at confidence ≥ 0.95) all trace to that run. Rerunning `liveTest` overwrote that artifact with a new run, which is a gitignored build output and not part of the reviewed revision.
+- `git diff --check 1803554..HEAD` — pass, exit 0, no whitespace errors.
+- `git grep -nE "TYPESAFE_API_KEY=|Bearer "` — pass. Every match is the README `export TYPESAFE_API_KEY=...` placeholder, plan/record prose, `"Bearer " + properties.apiKey()` in the client, or the fixed fake key `test-key-not-real`.
+- Limits: the live run exercises only Choice and Noul success responses. Score and the documented error responses (400, 401, 413, 415, 422, 429, 529) are covered offline but not against the live API; the record and README state this.
 
 ## Outcome
-Pending.
+Closed on 2026-10-15 after review Attempt 1 passed at `819bf58f2fb0aaa878f481548480a4b749029172`.
+
+What changed:
+- **A typed Java client for Jev's `/v1/systemone`.**
+  - It covers all three question types (Choice, Score, Noul) and maps errors to typed failures.
+  - Timeouts are 2 s to connect and 5 s to read. Retries happen only on 429, 529, and connection failures, with at most 3 attempts.
+  - Responses are validated strictly, and the key is redacted everywhere.
+- **A fail-closed agent request router and a `POST /route` demo endpoint.** One Jev call asks for an intent and an abuse probability, and plain Java thresholds turn the answers into `ALLOW`, `REVIEW`, or `BLOCK`.
+- **A `liveTest` task with a 12-case labelled corpus.**
+- **The [README](../README.md),** covering setup, routing rules, client behaviour, live results, known limits, and a fit assessment for paygate and Harbor Proxy.
+
+Verification at `819bf58`:
+- **Offline build:** `./gradlew clean build --rerun-tasks` passed, with 38 tests, 0 skipped, and 0 failures.
+- **Live run:** `./gradlew liveTest` passed against `jev-1.13.0`.
+  - Usable answers: 12/12.
+  - Intent matched the label: 12/12.
+  - Abusive requests allowed: 0 of 3. All three were blocked.
+- **Hygiene:** the whitespace check and the committed-secret check both passed.
+- **README numbers:** every number traces to the recorded run of 2026-10-16 02:16:47 UTC.
+
+Findings from the fit assessment ([README](../README.md#fit-for-paygate-and-harbor-proxy)):
+- Median latency was 87 ms, and each call used about 575 input tokens.
+- Jev flagged an injection payload hidden in a request body, which paygate's checks would not catch.
+- Jev stays an advisory signal. The recommended first deployment in Harbor Proxy is background scoring, where Jev's answers are only logged, not inline gating.
+
+The review raised three non-blocking points, none needing rework:
+- an explicit test dependency that is redundant;
+- rate limits surface as `Unavailable` rather than as a separate rate-limit exception;
+- the body excerpt is limited to 2048 characters, not 2 KB of UTF-8, so a non-ASCII body can exceed 2 KB.
+
+Limits and open questions:
+- Score and the documented error responses are covered only by offline tests, not against the live API.
+- The corpus is small and its abusive cases are blatant, so these results do not measure accuracy.
+- No request fell in the `abuse_possible` band (0.3–0.8), so that rule was not tested live.
+- The thresholds have not been tuned.
+- Cost per call is known in tokens only, because the run recorded no price.
+- The key on this machine lives in `JEV_API_KEY`. It was passed to the code under the name `TYPESAFE_API_KEY`, which is the only name the code reads.
 
 ## Next action
-Review from a fresh context with the `keel-review` skill. To repeat the live check, run `./gradlew liveTest` with `TYPESAFE_API_KEY` set.
+Get TypeSafe's per-token price for `jev-1.13`, then complete the cost comparison in the [README fit assessment](../README.md#fit-for-paygate-and-harbor-proxy).
