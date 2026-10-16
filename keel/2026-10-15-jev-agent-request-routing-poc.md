@@ -1,5 +1,5 @@
 # Jev agent request routing proof of concept
-Status: working
+Status: review
 Base revision: 344b66afe45dd651dae3e85305da36a04ffa078d
 Review scope: settings.gradle.kts, build.gradle.kts, gradlew, gradlew.bat, gradle/wrapper/, src/main/, src/test/, src/liveTest/, README.md, .gitignore
 
@@ -79,12 +79,12 @@ Approved: 2026-10-15 by Mark at plan revision 344b66afe45dd651dae3e85305da36a04f
 
   Check: `./gradlew test` passes.
 - [x] Implement the router, its configuration, and `POST /route`. Write decision-table tests covering every threshold boundary, every fail-closed reason, and the exclusion of credential headers from Jev's `state`, plus a controller test with `spring-boot-starter-webmvc-test`. Check: `./gradlew build` passes.
-- [ ] Add the `liveTest` source set, the corpus, and the task. Check: `./gradlew liveTest` passes against the real API, with latency and token usage recorded. If the key is unavailable, record `blocked`; if the run times out or stops partway, record `incomplete`.
-- [ ] Write `README.md`: setup with the key in the environment only, how to run, the live results table, observed latency, accuracy against the labels, cost per call, the limits from Constraints, and a fit assessment for paygate and Harbor Proxy. Check: every number in the README traces to the recorded live run.
+- [x] Add the `liveTest` source set, the corpus, and the task. Check: `./gradlew liveTest` passes against the real API, with latency and token usage recorded. If the key is unavailable, record `blocked`; if the run times out or stops partway, record `incomplete`.
+- [x] Write `README.md`: setup with the key in the environment only, how to run, the live results table, observed latency, accuracy against the labels, cost per call, the limits from Constraints, and a fit assessment for paygate and Harbor Proxy. Check: every number in the README traces to the recorded live run.
 - [x] Run `git diff --check 1803554..HEAD`. Then run `git grep -nE "TYPESAFE_API_KEY=|Bearer "` and confirm that every match is either an environment-variable reference or the fixed fake test key `test-key-not-real`. Check: both pass.
 
 ## Review
-WORK on 2026-10-15 with Java 25.0.1 and Gradle 9.4.1. The implementation is committed at `bc01ea9a6993683f2a963e1770751b181a36303b`; the scope also includes the root commit's `.gitignore`. The task stays at `working` because a required check is blocked.
+WORK on 2026-10-15 with Java 25.0.1 and Gradle 9.4.1. The implementation is committed at `bc01ea9a6993683f2a963e1770751b181a36303b`; the scope also includes the root commit's `.gitignore`. The first pass left the task at `working` because `liveTest` was blocked. The live run below unblocked it.
 
 - **pass:** `./gradlew build` on the empty scaffold, exit 0.
 - **pass:** `./gradlew clean build --rerun-tasks` at `bc01ea9`, exit 0, 8 tasks executed. The test XML records 38 tests, all with zero skips, failures, or errors:
@@ -93,8 +93,13 @@ WORK on 2026-10-15 with Java 25.0.1 and Gradle 9.4.1. The implementation is comm
   - `RouteControllerTest`: 2, a full context without a key that returns `REVIEW` / `jev_not_configured`.
 
   Every case in the client and router task lists is covered. This includes the read timeout (not retried), 529 retries running out with 200 ms and 400 ms backoff, a 422 body that echoes the key being redacted, the header allowlist, and the 2 KB body bound. All of it runs against `MockRestServiceServer` or a Mockito stub. The real wire contract is unverified until `liveTest` runs.
-- **blocked:** `./gradlew liveTest`. `TYPESAFE_API_KEY` is not set in this session's environment or in an interactive zsh profile. The task stopped before any test ran, with `BLOCKED: TYPESAFE_API_KEY is not set`, and Gradle reported `BUILD FAILED`. No live call was made, so latency, token usage, accuracy, and the "no abuse allowed" assertion are all unverified.
-- **incomplete:** `README.md`. Setup, running, routing rules, client behaviour, and known limits are written. The live results and the paygate/Harbor Proxy fit assessment are placeholders that depend on the blocked live run.
+- **blocked (first attempt):** `./gradlew liveTest`. `TYPESAFE_API_KEY` was not set, so the task stopped with `BLOCKED: TYPESAFE_API_KEY is not set` and `BUILD FAILED`. No live call was made.
+- **pass:** `TYPESAFE_API_KEY="$JEV_API_KEY" ./gradlew liveTest` at `ffbf1a8`, 2026-10-16 02:16:47 UTC, model `jev-1.13.0`, `BUILD SUCCESSFUL`. The key lives in `JEV_API_KEY` on this machine and was passed under the name the code reads; it was not printed. Both required assertions held:
+  - usable answers: 12/12;
+  - abusive requests allowed: 0/3, all three `BLOCK` / `abuse_high`.
+
+  Recorded, not gated: intent matched the label 12/12; latency median 87 ms and maximum 295 ms (the first call); 561–594 input tokens per call, 6,904 in total. No case fell in the 0.3–0.8 `abuse_possible` band.
+- **pass:** `README.md`. The live results table is copied from `build/live-results.md`, and every number in the results and fit sections traces to that run. Cost per call is given in tokens only, because the run records no price.
 - **pass:** `git diff --check 1803554..HEAD`, exit 0.
 - **pass:** `git grep -nE "TYPESAFE_API_KEY=|Bearer "`. Every match is the README's `export TYPESAFE_API_KEY=...` placeholder, plan text, the client's `"Bearer " + properties.apiKey()`, or the fake test key `KEY = "test-key-not-real"`.
 
@@ -104,4 +109,4 @@ No review attempt yet.
 Pending.
 
 ## Next action
-Set `TYPESAFE_API_KEY` in the environment, run `./gradlew liveTest`, and fill the README's live results and fit assessment from `build/live-results.md`. Then commit and set `Status: review`.
+Review from a fresh context with the `keel-review` skill. To repeat the live check, run `./gradlew liveTest` with `TYPESAFE_API_KEY` set.
