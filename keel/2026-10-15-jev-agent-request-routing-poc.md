@@ -1,6 +1,6 @@
 # Jev agent request routing proof of concept
-Status: planned
-Base revision: pending approval
+Status: working
+Base revision: 344b66afe45dd651dae3e85305da36a04ffa078d
 Review scope: settings.gradle.kts, build.gradle.kts, gradlew, gradlew.bat, gradle/wrapper/, src/main/, src/test/, src/liveTest/, README.md
 
 ## Goal
@@ -65,6 +65,8 @@ Acceptance has three parts:
   - *WireMock or Testcontainers.* `MockRestServiceServer` covers the client offline with no extra dependency.
   - *Letting Jev's `ALLOW` bypass deterministic checks.* The documented adversarial steering rules it out.
 
+Approved: 2026-10-15 by Mark at plan revision 344b66afe45dd651dae3e85305da36a04ffa078d.
+
 ## Tasks
 - [ ] Scaffold the build: copy the Gradle 9.4.1 wrapper from paygate with its checksum, then add a Java 25 toolchain, Spring Boot 4.0.8, and the app class. Check: `./gradlew build` passes on the empty app.
 - [ ] Implement the typed client, error mapping, and bounded retry. Write offline tests with `MockRestServiceServer` for:
@@ -88,4 +90,4 @@ Awaiting implementation and fresh-context review.
 Pending.
 
 ## Next action
-Approve or revise this plan.
+Implement the approved plan.
